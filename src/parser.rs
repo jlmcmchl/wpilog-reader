@@ -4,16 +4,18 @@ use crate::types::*;
 
 pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     let (input, _) = nom::bytes::complete::tag("WPILOG")(input)?;
-    let (rest, minor_version) = nom::number::complete::le_u8(input)?;
-    let (rest, major_version) = nom::number::complete::le_u8(rest)?;
+    let (input, minor_version) = nom::number::complete::le_u8(input)?;
+    let (input, major_version) = nom::number::complete::le_u8(input)?;
+    let (input, extra_header) = parse_string_with_len(input)?;
 
     if major_version == 1 && minor_version == 0 {
-        let (input, records) = nom::multi::many0(parse_wpilog_record)(rest)?;
+        let (input, records) = nom::multi::many0(parse_wpilog_record)(input)?;
         Ok((
             input,
             WpiLog {
                 major_version,
                 minor_version,
+                extra_header,
                 records,
             },
         ))
@@ -25,10 +27,42 @@ pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     }
 }
 
+fn parse_u32(input: &[u8], len: u8) -> IResult<&[u8], u32> {
+    let mut len = len + 1;
+    let mut agg = 0;
+    let mut input = input;
+    while len > 0 {
+        let (rest, entry_id) = nom::number::complete::le_u8(input)?;
+        agg = agg << 8 | entry_id as u32;
+        input = rest;
+        len -= 1;
+    }
+
+    Ok((input, agg))
+}
+
+fn parse_u64(input: &[u8], len: u8) -> IResult<&[u8], u64> {
+    let mut len = len + 1;
+    let mut agg = 0;
+    let mut input = input;
+    while len > 0 {
+        let (rest, entry_id) = nom::number::complete::le_u8(input)?;
+        agg = agg << 8 | entry_id as u64;
+        input = rest;
+        len -= 1;
+    }
+
+    Ok((input, agg))
+}
+
 fn parse_wpilog_record(input: &[u8]) -> IResult<&[u8], WpiRecord> {
-    let (input, entry_id) = nom::number::complete::le_u32(input)?;
-    let (input, payload_size) = nom::number::complete::le_u32(input)?;
-    let (input, timestamp_us) = nom::number::complete::le_u64(input)?;
+    let (input, header_len) = nom::number::complete::le_u8(input)?;
+    let entry_id_len = header_len & 0x3;
+    let payload_size_len = (header_len >> 2) & 0x3;
+    let timestamp_len = (header_len >> 4) & 0x7;
+    let (input, entry_id) = parse_u32(input, entry_id_len)?;
+    let (input, payload_size) = parse_u32(input, payload_size_len)?;
+    let (input, timestamp_us) = parse_u64(input, timestamp_len)?;
     let (input, data) = nom::bytes::complete::take(payload_size)(input)?;
 
     let data = if entry_id == 0 {
@@ -52,7 +86,7 @@ fn parse_wpilog_record(input: &[u8]) -> IResult<&[u8], WpiRecord> {
 }
 
 fn parse_control_record(input: &[u8]) -> IResult<&[u8], ControlRecord> {
-    let (rest, control_record_type) = nom::number::complete::le_u32(input)?;
+    let (rest, control_record_type) = nom::number::complete::le_u8(input)?;
 
     match control_record_type {
         0 => {

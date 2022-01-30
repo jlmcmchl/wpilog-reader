@@ -11,5 +11,5 @@ fn main() {
 
     let parsed_log = parse_wpilog(&content).unwrap().1;
 
-    println!("{:?}", parsed_log);
+    println!("{:#?}", parsed_log);
 }

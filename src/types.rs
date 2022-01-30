@@ -2,6 +2,7 @@
 pub struct WpiLog<'a> {
     pub major_version: u8,
     pub minor_version: u8,
+    pub extra_header: &'a str,
     pub records: Vec<WpiRecord<'a>>,
 }
 
