@@ -9,7 +9,7 @@ pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     let (input, extra_header) = parse_string_with_len(input)?;
 
     if major_version == 1 && minor_version == 0 {
-        let (input, records) = nom::multi::many0(parse_wpilog_record)(input)?;
+        let (input, records) = nom::combinator::all_consuming(nom::multi::many0(parse_wpilog_record))(input)?;
         Ok((
             input,
             WpiLog {
@@ -42,14 +42,14 @@ fn parse_u32(input: &[u8], len: u8) -> IResult<&[u8], u32> {
 }
 
 fn parse_u64(input: &[u8], len: u8) -> IResult<&[u8], u64> {
-    let mut len = len + 1;
     let mut agg = 0;
     let mut input = input;
-    while len > 0 {
+
+    for iter in 0..=len {
         let (rest, entry_id) = nom::number::complete::le_u8(input)?;
-        agg = agg << 8 | entry_id as u64;
+        agg |= (entry_id as u64) << (8 * iter);
+
         input = rest;
-        len -= 1;
     }
 
     Ok((input, agg))
