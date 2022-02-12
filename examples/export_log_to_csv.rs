@@ -49,16 +49,14 @@ fn export_metadata(metadata_file: &Path, log: &[MetadataEntry]) {
 fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
     let mut csvwriter = csv::Writer::from_path(data_file).unwrap();
 
-    let mut template_record = vec![None];
-
     csvwriter.write_field("timestamp").unwrap();
-    println!("timestamp, double");
+
+    let field_count: usize = metadata.iter().map(|entry| entry.field_count()).sum();
+    let template_record = vec![None; field_count + 1];
 
     for entry in metadata {
         for field in entry.fields() {
             csvwriter.write_field(field.clone()).unwrap();
-            template_record.push(None);
-            println!("{} - {}", entry.typ, field);
         }
     }
     csvwriter.write_record(None::<&[u8]>).unwrap();
@@ -73,11 +71,10 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
         last_len = entry.field_count();
     }
 
-    println!("{:?}", start_indices);
-
     for record in &log.records {
         let mut row = template_record.clone();
         row[0] = Some(format!("{}", record.timestamp_us as f64 / 1_000_000.0));
+
         match &record.data {
             Record::Control(_) => {}
             Record::Data(data) => {
@@ -111,31 +108,51 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                     }
                     "boolean[]" => {
                         let (_, val) = parse_array(parse_boolean, data.data).unwrap();
-                        row[start] = Some(format!("{}", val.len()));
-                        val.iter().enumerate().for_each(|(offset, val)| {
-                            row[start + offset + 1] = Some(format!("{:X?}", *val as u8));
-                        });
+
+                        if metadata.should_expand() {
+                            row[start] = Some(format!("{}", val.len()));
+                            val.iter().enumerate().for_each(|(offset, val)| {
+                                row[start + offset + 1] = Some(format!("{:X?}", *val as u8));
+                            });
+                        } else {
+                            row[start] = Some(serde_json::to_string(&val).unwrap());
+                        }
                     }
                     "int64[]" => {
                         let (_, val) = parse_array(parse_int64, data.data).unwrap();
-                        row[start] = Some(format!("{}", val.len()));
-                        val.iter().enumerate().for_each(|(offset, val)| {
-                            row[start + offset + 1] = Some(format!("{}", *val));
-                        });
+
+                        if metadata.should_expand() {
+                            row[start] = Some(format!("{}", val.len()));
+                            val.iter().enumerate().for_each(|(offset, val)| {
+                                row[start + offset + 1] = Some(format!("{}", *val));
+                            });
+                        } else {
+                            row[start] = Some(serde_json::to_string(&val).unwrap());
+                        }
                     }
                     "float[]" => {
                         let (_, val) = parse_array(parse_float, data.data).unwrap();
-                        row[start] = Some(format!("{}", val.len()));
-                        val.iter().enumerate().for_each(|(offset, val)| {
-                            row[start + offset + 1] = Some(format!("{}", *val));
-                        });
+
+                        if metadata.should_expand() {
+                            row[start] = Some(format!("{}", val.len()));
+                            val.iter().enumerate().for_each(|(offset, val)| {
+                                row[start + offset + 1] = Some(format!("{}", *val));
+                            });
+                        } else {
+                            row[start] = Some(serde_json::to_string(&val).unwrap());
+                        }
                     }
                     "double[]" => {
                         let (_, val) = parse_array(parse_double, data.data).unwrap();
-                        row[start] = Some(format!("{}", val.len()));
-                        val.iter().enumerate().for_each(|(offset, val)| {
-                            row[start + offset + 1] = Some(format!("{}", *val));
-                        });
+
+                        if metadata.should_expand() {
+                            row[start] = Some(format!("{}", val.len()));
+                            val.iter().enumerate().for_each(|(offset, val)| {
+                                row[start + offset + 1] = Some(format!("{}", *val));
+                            });
+                        } else {
+                            row[start] = Some(serde_json::to_string(&val).unwrap());
+                        }
                     }
                     "string[]" => {
                         let (_, val) =
@@ -176,11 +193,6 @@ fn main() {
 
     // sort(&mut organized_log);
 
-    let data_fname = args[1].clone() + ".data.csv";
-    let data_file = Path::new(&data_fname);
-
-    export_data(data_file, &parsed_log, &metadata);
-
     let types_fname = args[1].clone() + ".types.csv";
     let types_file = Path::new(&types_fname);
 
@@ -190,4 +202,9 @@ fn main() {
     let metadata_file = Path::new(&metadata_fname);
 
     export_metadata(metadata_file, &metadata);
+
+    let data_fname = args[1].clone() + ".data.csv";
+    let data_file = Path::new(&data_fname);
+
+    export_data(data_file, &parsed_log, &metadata);
 }

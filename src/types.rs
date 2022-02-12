@@ -44,20 +44,21 @@ impl<'a> WpiLog<'a> {
                             record.all_same_length = match record.typ {
                                 "boolean" | "int64" | "float" | "double" | "string" => None,
                                 "boolean[]" => Some((data.data.len(), 1)),
-                                "int64[]" => Some( (data.data.len() / 8, 8)),
-                                "float[]" => Some( (data.data.len() / 4, 4)),
+                                "int64[]" => Some((data.data.len() / 8, 8)),
+                                "float[]" => Some((data.data.len() / 4, 4)),
                                 "double[]" => Some((data.data.len() / 8, 8)),
                                 "string[]" => None, // Do we care to handle this?
                                 _ => None,
                             }
                         } else {
-                            record.all_same_length = record.all_same_length.and_then(|(len, div)| {
-                                if len == data.data.len() / div {
-                                    Some((len, div))
-                                } else {
-                                    None
-                                }
-                            });
+                            record.all_same_length =
+                                record.all_same_length.and_then(|(len, div)| {
+                                    if len == data.data.len() / div {
+                                        Some((len, div))
+                                    } else {
+                                        None
+                                    }
+                                });
                         }
 
                         record.entry_count += 1;
@@ -132,8 +133,12 @@ impl<'a> MetadataEntry<'a> {
         self.typ.ends_with("[]")
     }
 
+    pub fn should_expand(&self) -> bool {
+        self.is_array() && self.all_same_length.is_some() && self.entry_count > 16
+    }
+
     pub fn fields(&self) -> Vec<String> {
-        if self.is_array() && self.all_same_length.is_some() && self.entry_count > 16 {
+        if self.should_expand() {
             (0..self.all_same_length.unwrap_or_default().0)
                 .map(|i| format!("{}/[{}]", self.name, i))
                 .fold(vec![format!("{}/len", self.name)], |mut v, entry| {
@@ -146,7 +151,11 @@ impl<'a> MetadataEntry<'a> {
     }
 
     pub fn field_count(&self) -> usize {
-        self.all_same_length.unwrap_or_default().0 + 1
+        if self.should_expand() {
+            self.all_same_length.unwrap_or_default().0 + 1
+        } else {
+            1
+        }
     }
 }
 
