@@ -26,15 +26,14 @@ impl<'a> WpiLog<'a> {
                     });
                 }
                 Record::Control(ControlRecord::SetMetadata(set_metadata)) => {
-                    map.get_mut(&set_metadata.entry_id)
-                        .map(|entry: &mut MetadataEntry| {
-                            entry.metadata = set_metadata.metadata;
-                        });
+                    if let Some(entry) = map.get_mut(&set_metadata.entry_id) {
+                        entry.metadata = set_metadata.metadata;
+                    }
                 }
                 Record::Control(ControlRecord::Finish(finish)) => {
-                    map.get_mut(&finish.entry_id).map(|entry| {
+                    if let Some(entry) = map.get_mut(&finish.entry_id) {
                         entry.finished = true;
-                    });
+                    }
                 }
                 Record::Data(data) => {
                     map.get_mut(&entry.entry_id).and_then::<(), _>(|record| {
