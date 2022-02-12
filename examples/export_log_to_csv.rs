@@ -52,26 +52,32 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
     let mut template_record = vec![None];
 
     csvwriter.write_field("timestamp").unwrap();
+    println!("timestamp, double");
 
     for entry in metadata {
         for field in entry.fields() {
-            csvwriter.write_field(field).unwrap();
+            csvwriter.write_field(field.clone()).unwrap();
             template_record.push(None);
+            println!("{} - {}", entry.typ, field);
         }
     }
     csvwriter.write_record(None::<&[u8]>).unwrap();
 
     // develop some sort of index to which index in row[] does the entry start
     let mut start_indices = Vec::new();
-    let mut last_end = 0;
+    let mut last_start = 0;
+    let mut last_len = 1;
     for entry in metadata {
-        start_indices.push(last_end + 1);
-        last_end += entry.field_count();
+        start_indices.push(last_start + last_len);
+        last_start += last_len;
+        last_len = entry.field_count();
     }
+
+    println!("{:?}", start_indices);
 
     for record in &log.records {
         let mut row = template_record.clone();
-        row[0] = Some(format!("{}", record.timestamp_us / 1_000_000));
+        row[0] = Some(format!("{}", record.timestamp_us as f64 / 1_000_000.0));
         match &record.data {
             Record::Control(_) => {}
             Record::Data(data) => {
@@ -148,6 +154,8 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                         None => csvwriter.write_field(&[]).unwrap(),
                     }
                 }
+
+                csvwriter.write_record(None::<&[u8]>).unwrap();
             }
         }
     }

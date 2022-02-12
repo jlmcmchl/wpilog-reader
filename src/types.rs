@@ -15,6 +15,9 @@ impl<'a> WpiLog<'a> {
         for entry in &self.records {
             match &entry.data {
                 Record::Control(ControlRecord::Start(start)) => {
+                    if map.contains_key(&start.entry_id) {
+                        panic!("duped entry ids");
+                    }
                     map.entry(start.entry_id).or_insert_with(|| MetadataEntry {
                         entry_id: start.entry_id,
                         name: start.name,
@@ -40,17 +43,17 @@ impl<'a> WpiLog<'a> {
                         if record.entry_count == 0 {
                             record.all_same_length = match record.typ {
                                 "boolean" | "int64" | "float" | "double" | "string" => None,
-                                "boolean[]" => Some(data.data.len()),
-                                "int64[]" => Some(data.data.len()),
-                                "float[]" => Some(data.data.len()),
-                                "double[]" => Some(data.data.len()),
+                                "boolean[]" => Some((data.data.len(), 1)),
+                                "int64[]" => Some( (data.data.len() / 8, 8)),
+                                "float[]" => Some( (data.data.len() / 4, 4)),
+                                "double[]" => Some((data.data.len() / 8, 8)),
                                 "string[]" => None, // Do we care to handle this?
                                 _ => None,
                             }
                         } else {
-                            record.all_same_length = record.all_same_length.and_then(|len| {
-                                if len == data.data.len() {
-                                    Some(len)
+                            record.all_same_length = record.all_same_length.and_then(|(len, div)| {
+                                if len == data.data.len() / div {
+                                    Some((len, div))
                                 } else {
                                     None
                                 }
@@ -120,7 +123,7 @@ pub struct MetadataEntry<'a> {
     pub typ: &'a str,
     pub metadata: &'a str,
     pub entry_count: usize,
-    pub(crate) all_same_length: Option<usize>,
+    pub(crate) all_same_length: Option<(usize, usize)>,
     pub finished: bool,
 }
 
@@ -131,7 +134,7 @@ impl<'a> MetadataEntry<'a> {
 
     pub fn fields(&self) -> Vec<String> {
         if self.is_array() && self.all_same_length.is_some() && self.entry_count > 16 {
-            (0..self.all_same_length.unwrap_or_default())
+            (0..self.all_same_length.unwrap_or_default().0)
                 .map(|i| format!("{}/[{}]", self.name, i))
                 .fold(vec![format!("{}/len", self.name)], |mut v, entry| {
                     v.push(entry);
@@ -143,7 +146,7 @@ impl<'a> MetadataEntry<'a> {
     }
 
     pub fn field_count(&self) -> usize {
-        self.all_same_length.unwrap_or_default() + 1
+        self.all_same_length.unwrap_or_default().0 + 1
     }
 }
 
