@@ -9,14 +9,38 @@ pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     let (input, extra_header) = parse_string_with_len(input)?;
 
     if major_version == 1 && minor_version == 0 {
-        let (input, records) = nom::combinator::all_consuming(nom::multi::many0(parse_wpilog_record))(input)?;
+        let (input, records) =
+            nom::combinator::all_consuming(nom::multi::many0(parse_wpilog_record))(input)?;
+        let start_records = records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Start(_))))
+            .cloned()
+            .collect();
+        let set_metadata_records = records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::SetMetadata(_))))
+            .cloned()
+            .collect();
+        let finish_records = records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Finish(_))))
+            .cloned()
+            .collect();
+        let data_records = records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Data(_)))
+            .cloned()
+            .collect();
         Ok((
             input,
             WpiLog {
                 major_version,
                 minor_version,
                 extra_header,
-                records,
+                start_records,
+                set_metadata_records,
+                finish_records,
+                data_records,
             },
         ))
     } else {
