@@ -182,6 +182,7 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    let in_path = Path::new(&args[1]);
     let mut infile = File::open(&args[1]).unwrap();
 
     let mut content = Vec::new();
@@ -193,17 +194,18 @@ fn main() {
 
     parsed_log.sort();
 
-    let types_fname = args[1].clone() + ".types.csv";
+
+    let types_fname = format!("{}/{}-types.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
     let types_file = Path::new(&types_fname);
 
     export_types(types_file, &metadata);
 
-    let metadata_fname = args[1].clone() + ".metadata.csv";
+    let metadata_fname = format!("{}/{}-metadata.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
     let metadata_file = Path::new(&metadata_fname);
 
     export_metadata(metadata_file, &metadata);
 
-    let data_fname = args[1].clone() + ".data.csv";
+    let data_fname = format!("{}/{}-data.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
     let data_file = Path::new(&data_fname);
 
     export_data(data_file, &parsed_log, &metadata);
