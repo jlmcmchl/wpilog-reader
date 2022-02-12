@@ -71,6 +71,11 @@ impl<'a> WpiLog<'a> {
 
         map.values().cloned().collect()
     }
+
+    pub fn sort(&mut self) {
+        let records = &mut self.records;
+        records.sort_unstable_by_key(|record| record.timestamp_us);
+    }
 }
 
 #[derive(Debug, Clone)]

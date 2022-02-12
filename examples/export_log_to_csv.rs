@@ -187,11 +187,11 @@ fn main() {
     let mut content = Vec::new();
     infile.read_to_end(&mut content).unwrap();
 
-    let parsed_log = parse_wpilog(&content).unwrap().1;
+    let mut parsed_log = parse_wpilog(&content).unwrap().1;
 
     let metadata = parsed_log.get_entry_metadata();
 
-    // sort(&mut organized_log);
+    parsed_log.sort();
 
     let types_fname = args[1].clone() + ".types.csv";
     let types_file = Path::new(&types_fname);
