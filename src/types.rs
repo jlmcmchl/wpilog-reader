@@ -1,12 +1,73 @@
+use std::collections::HashMap;
+
 #[derive(Default, Debug, Clone)]
 pub struct WpiLog<'a> {
     pub major_version: u8,
     pub minor_version: u8,
     pub extra_header: &'a str,
-    pub start_records: Vec<WpiRecord<'a>>,
-    pub set_metadata_records: Vec<WpiRecord<'a>>,
-    pub finish_records: Vec<WpiRecord<'a>>,
-    pub data_records: Vec<WpiRecord<'a>>,
+    pub records: Vec<WpiRecord<'a>>,
+}
+
+impl<'a> WpiLog<'a> {
+    pub fn get_entry_metadata(&self) -> Vec<MetadataEntry<'a>> {
+        let mut map = HashMap::new();
+
+        for entry in &self.records {
+            match &entry.data {
+                Record::Control(ControlRecord::Start(start)) => {
+                    map.entry(start.entry_id).or_insert_with(|| MetadataEntry {
+                        entry_id: start.entry_id,
+                        name: start.name,
+                        typ: start.typ,
+                        metadata: start.metadata,
+                        entry_count: 0,
+                        all_same_length: None,
+                        finished: false,
+                    });
+                }
+                Record::Control(ControlRecord::SetMetadata(set_metadata)) => {
+                    map.get_mut(&set_metadata.entry_id)
+                        .map(|entry: &mut MetadataEntry| {
+                            entry.metadata = set_metadata.metadata;
+                        });
+                }
+                Record::Control(ControlRecord::Finish(finish)) => {
+                    map.get_mut(&finish.entry_id).map(|entry| {
+                        entry.finished = true;
+                    });
+                }
+                Record::Data(data) => {
+                    map.get_mut(&entry.entry_id).and_then::<(), _>(|record| {
+                        if record.entry_count == 0 {
+                            record.all_same_length = match record.typ {
+                                "boolean" | "int64" | "float" | "double" | "string" => None,
+                                "boolean[]" => Some(data.data.len()),
+                                "int64[]" => Some(data.data.len()),
+                                "float[]" => Some(data.data.len()),
+                                "double[]" => Some(data.data.len()),
+                                "string[]" => None, // Do we care to handle this?
+                                _ => None,
+                            }
+                        } else {
+                            record.all_same_length = record.all_same_length.and_then(|len| {
+                                if len == data.data.len() {
+                                    Some(len)
+                                } else {
+                                    None
+                                }
+                            });
+                        }
+
+                        record.entry_count += 1;
+
+                        None
+                    });
+                }
+            }
+        }
+
+        map.values().cloned().collect()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,70 +114,38 @@ pub struct SetMetadataRecord<'a> {
     pub metadata: &'a str,
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct OrganizedLog<'a> {
-    pub sessioned_data: Vec<DataEntry<'a>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DataEntry<'a> {
+#[derive(Debug, Clone, Default)]
+pub struct MetadataEntry<'a> {
     pub entry_id: u32,
     pub name: &'a str,
     pub typ: &'a str,
     pub metadata: &'a str,
-    pub timestamps: Vec<u64>,
-    pub data: DataVec<'a>,
-    pub(crate) max_len: Option<usize>,
+    pub entry_count: usize,
+    pub(crate) all_same_length: Option<usize>,
+    pub finished: bool,
 }
 
-impl<'a> DataEntry<'a> {
+impl<'a> MetadataEntry<'a> {
     pub fn is_array(&self) -> bool {
         self.typ.ends_with("[]")
     }
 
-    fn max_len(&self) -> usize {
-        self.max_len.unwrap_or_default()
-    }
-
-    pub fn fields(&mut self) -> Vec<String> {
-        match self.data {
-            DataVec::Raw(_)
-            | DataVec::Boolean(_)
-            | DataVec::Int64(_)
-            | DataVec::Float(_)
-            | DataVec::Double(_)
-            | DataVec::String(_) => vec![self.name.to_string()],
-            DataVec::BooleanArray(_)
-            | DataVec::Int64Array(_)
-            | DataVec::FloatArray(_)
-            | DataVec::DoubleArray(_)
-            | DataVec::StringArray(_) => {
-                let max_len = self.max_len();
-                (0..max_len).map(|i| format!("{}/[{}]", self.name, i)).fold(
-                    vec![format!("{}/len", self.name)],
-                    |mut v, entry| {
-                        v.push(entry);
-                        v
-                    },
-                )
-            }
+    pub fn fields(&self) -> Vec<String> {
+        if self.is_array() && self.all_same_length.is_some() && self.entry_count > 16 {
+            (0..self.all_same_length.unwrap_or_default())
+                .map(|i| format!("{}/[{}]", self.name, i))
+                .fold(vec![format!("{}/len", self.name)], |mut v, entry| {
+                    v.push(entry);
+                    v
+                })
+        } else {
+            vec![self.name.to_string()]
         }
     }
-}
 
-#[derive(Debug, Clone)]
-pub enum DataVec<'a> {
-    Raw(Vec<&'a [u8]>),
-    Boolean(Vec<bool>),
-    Int64(Vec<i64>),
-    Float(Vec<f32>),
-    Double(Vec<f64>),
-    String(Vec<&'a str>),
-    BooleanArray(Vec<Vec<bool>>),
-    Int64Array(Vec<Vec<i64>>),
-    FloatArray(Vec<Vec<f32>>),
-    DoubleArray(Vec<Vec<f64>>),
-    StringArray(Vec<Vec<&'a str>>),
+    pub fn field_count(&self) -> usize {
+        self.all_same_length.unwrap_or_default() + 1
+    }
 }
 
 #[derive(Debug, Clone)]

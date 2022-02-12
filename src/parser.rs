@@ -11,36 +11,13 @@ pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     if major_version == 1 && minor_version == 0 {
         let (input, records) =
             nom::combinator::all_consuming(nom::multi::many0(parse_wpilog_record))(input)?;
-        let start_records = records
-            .iter()
-            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Start(_))))
-            .cloned()
-            .collect();
-        let set_metadata_records = records
-            .iter()
-            .filter(|record| matches!(record.data, Record::Control(ControlRecord::SetMetadata(_))))
-            .cloned()
-            .collect();
-        let finish_records = records
-            .iter()
-            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Finish(_))))
-            .cloned()
-            .collect();
-        let data_records = records
-            .iter()
-            .filter(|record| matches!(record.data, Record::Data(_)))
-            .cloned()
-            .collect();
         Ok((
             input,
             WpiLog {
                 major_version,
                 minor_version,
                 extra_header,
-                start_records,
-                set_metadata_records,
-                finish_records,
-                data_records,
+                records,
             },
         ))
     } else {
@@ -52,14 +29,14 @@ pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
 }
 
 fn parse_u32(input: &[u8], len: u8) -> IResult<&[u8], u32> {
-    let mut len = len + 1;
     let mut agg = 0;
     let mut input = input;
-    while len > 0 {
+
+    for iter in 0..=len {
         let (rest, entry_id) = nom::number::complete::le_u8(input)?;
-        agg = agg << 8 | entry_id as u32;
+        agg |= (entry_id as u32) << (8 * iter);
+
         input = rest;
-        len -= 1;
     }
 
     Ok((input, agg))

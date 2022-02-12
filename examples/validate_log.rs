@@ -1,6 +1,9 @@
 use std::{env, fs::File, io::Read};
 
-use wpilog_reader::parse_wpilog;
+use wpilog_reader::{
+    parser::parse_wpilog,
+    types::{ControlRecord, Record},
+};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -14,11 +17,11 @@ fn main() {
     match parsed_log {
         Ok((_, log)) => println!(
             "Parse successful - {} entries with {} records",
-            log.start_records.len(),
-            log.start_records.len()
-                + log.set_metadata_records.len()
-                + log.finish_records.len()
-                + log.data_records.len()
+            log.records
+                .iter()
+                .filter(|rec| matches!(rec.data, Record::Control(ControlRecord::Start(_))))
+                .count(),
+            log.records.len()
         ),
         Err(e) => println!("{}", e),
     }

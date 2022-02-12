@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::Read};
 
-use wpilog_reader::{parse_wpilog, utils::reorganize};
+use wpilog_reader::parser::parse_wpilog;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -10,7 +10,7 @@ fn main() {
     file.read_to_end(&mut content).unwrap();
 
     let parsed_log = parse_wpilog(&content).unwrap().1;
-    let organized_log = reorganize(parsed_log);
+    let metadata = parsed_log.get_entry_metadata();
 
-    println!("{:?}", organized_log);
+    println!("{:#?}", metadata);
 }

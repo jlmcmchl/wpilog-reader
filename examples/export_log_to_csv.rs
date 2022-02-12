@@ -1,8 +1,159 @@
 use std::{env, fs::File, io::Read, path::Path};
 
-use wpilog_reader::{parse_wpilog, reorganize, sort, to_array};
+use wpilog_reader::{
+    parser::{
+        parse_array, parse_array_ref_with_len, parse_boolean, parse_double, parse_float,
+        parse_int64, parse_string_full, parse_string_with_len, parse_wpilog,
+    },
+    types::{MetadataEntry, Record, WpiLog},
+};
 
-use wpilog_reader::types::DataType;
+fn export_types(typ_file: &Path, log: &[MetadataEntry]) {
+    let mut csvwriter = csv::Writer::from_path(typ_file).unwrap();
+
+    csvwriter.write_field("timestamp").unwrap();
+
+    for entry in log {
+        csvwriter.write_field(entry.name).unwrap();
+    }
+    csvwriter.write_record(None::<&[u8]>).unwrap();
+
+    csvwriter.write_field("0").unwrap();
+    for entry in log {
+        csvwriter.write_field(entry.typ).unwrap();
+    }
+    csvwriter.write_record(None::<&[u8]>).unwrap();
+
+    csvwriter.flush().unwrap();
+}
+
+fn export_metadata(metadata_file: &Path, log: &[MetadataEntry]) {
+    let mut csvwriter = csv::Writer::from_path(metadata_file).unwrap();
+
+    csvwriter.write_field("timestamp").unwrap();
+
+    for entry in log {
+        csvwriter.write_field(entry.name).unwrap();
+    }
+    csvwriter.write_record(None::<&[u8]>).unwrap();
+
+    csvwriter.write_field("0").unwrap();
+    for entry in log {
+        csvwriter.write_field(entry.metadata).unwrap();
+    }
+    csvwriter.write_record(None::<&[u8]>).unwrap();
+
+    csvwriter.flush().unwrap();
+}
+
+fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
+    let mut csvwriter = csv::Writer::from_path(data_file).unwrap();
+
+    let mut template_record = vec![None];
+
+    csvwriter.write_field("timestamp").unwrap();
+
+    for entry in metadata {
+        for field in entry.fields() {
+            csvwriter.write_field(field).unwrap();
+            template_record.push(None);
+        }
+    }
+    csvwriter.write_record(None::<&[u8]>).unwrap();
+
+    // develop some sort of index to which index in row[] does the entry start
+    let mut start_indices = Vec::new();
+    let mut last_end = 0;
+    for entry in metadata {
+        start_indices.push(last_end + 1);
+        last_end += entry.field_count();
+    }
+
+    for record in &log.records {
+        let mut row = template_record.clone();
+        row[0] = Some(format!("{}", record.timestamp_us / 1_000_000));
+        match &record.data {
+            Record::Control(_) => {}
+            Record::Data(data) => {
+                let (ind, metadata) = metadata
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.entry_id == record.entry_id)
+                    .unwrap();
+                let start = start_indices[ind];
+
+                match metadata.typ {
+                    "boolean" => {
+                        let (_, val) = parse_boolean(data.data).unwrap();
+                        row[start] = Some(format!("{:X?}", val as u8));
+                    }
+                    "int64" => {
+                        let (_, val) = parse_int64(data.data).unwrap();
+                        row[start] = Some(format!("{}", val));
+                    }
+                    "float" => {
+                        let (_, val) = parse_float(data.data).unwrap();
+                        row[start] = Some(format!("{}", val));
+                    }
+                    "double" => {
+                        let (_, val) = parse_double(data.data).unwrap();
+                        row[start] = Some(format!("{}", val));
+                    }
+                    "string" => {
+                        let (_, val) = parse_string_full(data.data).unwrap();
+                        row[start] = Some(val.to_string());
+                    }
+                    "boolean[]" => {
+                        let (_, val) = parse_array(parse_boolean, data.data).unwrap();
+                        row[start] = Some(format!("{}", val.len()));
+                        val.iter().enumerate().for_each(|(offset, val)| {
+                            row[start + offset + 1] = Some(format!("{:X?}", *val as u8));
+                        });
+                    }
+                    "int64[]" => {
+                        let (_, val) = parse_array(parse_int64, data.data).unwrap();
+                        row[start] = Some(format!("{}", val.len()));
+                        val.iter().enumerate().for_each(|(offset, val)| {
+                            row[start + offset + 1] = Some(format!("{}", *val));
+                        });
+                    }
+                    "float[]" => {
+                        let (_, val) = parse_array(parse_float, data.data).unwrap();
+                        row[start] = Some(format!("{}", val.len()));
+                        val.iter().enumerate().for_each(|(offset, val)| {
+                            row[start + offset + 1] = Some(format!("{}", *val));
+                        });
+                    }
+                    "double[]" => {
+                        let (_, val) = parse_array(parse_double, data.data).unwrap();
+                        row[start] = Some(format!("{}", val.len()));
+                        val.iter().enumerate().for_each(|(offset, val)| {
+                            row[start + offset + 1] = Some(format!("{}", *val));
+                        });
+                    }
+                    "string[]" => {
+                        let (_, val) =
+                            parse_array_ref_with_len(parse_string_with_len, data.data).unwrap();
+                        row[start] = Some(serde_json::to_string(&val).unwrap());
+                    } // Do we care to properly handle this?
+                    _ => {
+                        // raw, treat like an unsafe string
+                        row[start] = Some(format!("{:X?}", data.data));
+                    }
+                }
+
+                for field in row {
+                    match field {
+                        Some(val) => csvwriter.write_field(val).unwrap(),
+                        None => csvwriter.write_field(&[]).unwrap(),
+                    }
+                }
+            }
+        }
+    }
+
+    csvwriter.flush().unwrap();
+}
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -12,62 +163,23 @@ fn main() {
     infile.read_to_end(&mut content).unwrap();
 
     let parsed_log = parse_wpilog(&content).unwrap().1;
-    let mut organized_log = reorganize(parsed_log);
 
-    sort(&mut organized_log);
-    let csv_log = to_array(&organized_log);
+    let metadata = parsed_log.get_entry_metadata();
 
-    let outfile = Path::new(&args[2]);
+    // sort(&mut organized_log);
 
-    let mut csvwriter = csv::Writer::from_path(outfile).unwrap();
+    let data_fname = args[1].clone() + ".data.csv";
+    let data_file = Path::new(&data_fname);
 
-    csvwriter.write_field("timestamp").unwrap();
-    for field in &organized_log.sessioned_data {
-        csvwriter.write_field(field.name).unwrap();
-    }
-    csvwriter.write_record(None::<&[u8]>).unwrap();
+    export_data(data_file, &parsed_log, &metadata);
 
-    // csvwriter.write_field("int64").unwrap();
-    // for field in &organized_log.sessioned_data {
-    //     csvwriter.write_field(field.typ).unwrap();
-    // }
-    // csvwriter.write_record(None::<&[u8]>).unwrap();
+    let types_fname = args[1].clone() + ".types.csv";
+    let types_file = Path::new(&types_fname);
 
-    // csvwriter.write_field(&[]).unwrap();
-    // for field in &organized_log.sessioned_data {
-    //     csvwriter.write_field(field.metadata).unwrap();
-    // }
-    // csvwriter.write_record(None::<&[u8]>).unwrap();
+    export_types(types_file, &metadata);
 
-    for row in csv_log {
-        for field in row {
-            match field {
-                Some(DataType::Raw(raw)) => csvwriter.write_field(format!("{:X?}", raw)).unwrap(),
-                Some(DataType::Boolean(boolean)) => csvwriter
-                    .write_field(format!("{:X?}", boolean as u8))
-                    .unwrap(),
-                Some(DataType::Int64(int64)) => {
-                    csvwriter.write_field(format!("{}", int64)).unwrap()
-                }
-                Some(DataType::Float(float)) => {
-                    csvwriter.write_field(format!("{}", float)).unwrap()
-                }
-                Some(DataType::Double(double)) => {
-                    csvwriter.write_field(format!("{}", double)).unwrap()
-                }
-                _ => csvwriter.write_field(&[]).unwrap(),
-                // Some(DataType::String(string)) => csvwriter.write_field(string).unwrap(),
-                // Some(DataType::BooleanArray(booleanArray)) => {}
-                // Some(DataType::Int64Array(int64Array)) => {}
-                // Some(DataType::FloatArray(floatArray)) => {}
-                // Some(DataType::DoubleArray(doubleArray)) => {}
-                // Some(DataType::StringArray(stringArray)) => {},
-                // None => csvwriter.write_field("0").unwrap(),
-            }
-        }
-        csvwriter.write_record(None::<&[u8]>).unwrap();
-        csvwriter.flush().unwrap();
-    }
+    let metadata_fname = args[1].clone() + ".metadata.csv";
+    let metadata_file = Path::new(&metadata_fname);
 
-    csvwriter.flush().unwrap();
+    export_metadata(metadata_file, &metadata);
 }
