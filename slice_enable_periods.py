@@ -122,7 +122,7 @@ if __name__ == "__main__":
     args.before = int(args.before)
     args.after = int(args.after)
 
-    if '.csv' in args.output:
+    if args.output[-4:] == '.csv':
         args.output = args.output[:-4]
 
     keys = []
