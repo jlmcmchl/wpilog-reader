@@ -97,6 +97,17 @@ def read_csv(args):
             if was_active_window and time > max_time:
                 print(f"exporting range of {min_time}-{max_time}")
                 write_file(args.output, rows, keys)
+
+                # this _should_ be a successful find (barring floating point math)
+                (candidate_min_index, _) = binarySearch(
+                    rows,
+                    max_time - args.before,
+                    lambda row: float(row["timestamp"]),
+                )
+
+                # don't include the found row, just everything after
+                candidate_rows.extend(rows[candidate_min_index+1:])
+
                 del rows
                 rows = []
                 was_active_window = False
