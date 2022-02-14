@@ -1,8 +1,6 @@
 import csv
 import argparse
-from collections import defaultdict
 from timeit import default_timer as timer
-import bisect
 
 
 def binarySearch(alist, item, key):
@@ -33,17 +31,17 @@ def binarySearch(alist, item, key):
 
 
 def read_csv(args):
+    print(f"reading file {args.input}")
     with open(args.input, newline="", buffering=1) as f:
         reader = csv.DictReader(f)
-        ranges = []
 
         candidate_rows = []
         rows = []
-
         active_window = False
         was_active_window = False
         min_time = 0
         max_time = 0
+
         keys = reader.fieldnames
 
         for row in reader:
@@ -58,8 +56,8 @@ def read_csv(args):
                 if not was_active_window:
                     min_time = max(0, time - args.before)
 
-                    candidate_min_time = candidate_rows[0]['timestamp']
-                    candidate_max_time = candidate_rows[-1]['timestamp']
+                    candidate_min_time = candidate_rows[0]["timestamp"]
+                    candidate_max_time = candidate_rows[-1]["timestamp"]
 
                     if min_time < float(candidate_min_time):
                         rows.extend(candidate_rows)
@@ -67,7 +65,7 @@ def read_csv(args):
                         pass
                     else:
                         # it's somewhere in between
-                        print(f'binary searching for {min_time} between {candidate_min_time} and {candidate_max_time}')
+                        # print(f'searching for {min_time} between {candidate_min_time} and {candidate_max_time}')
 
                         (candidate_min_index, _) = binarySearch(
                             candidate_rows,
@@ -76,7 +74,7 @@ def read_csv(args):
                         )
 
                         rows.extend(candidate_rows[candidate_min_index:])
-                        
+
                     rows.append(row)
 
                     del candidate_rows
@@ -97,18 +95,17 @@ def read_csv(args):
                 candidate_rows.append(row)
 
             if was_active_window and time > max_time:
-                print(f"adding range of {min_time}-{max_time}")
+                print(f"exporting range of {min_time}-{max_time}")
                 write_file(args.output, rows, keys)
-                del(rows)
+                del rows
                 rows = []
                 was_active_window = False
 
     if len(rows) > 0:
         print(f"adding range of {min_time}-{max_time}")
         write_file(args.output, rows, keys)
-        del(rows)
-    del(candidate_rows)
-    return (rows, keys, ranges)
+        del rows
+    del candidate_rows
 
 
 def write_file(output, rows, keys):
@@ -128,45 +125,39 @@ def write_file(output, rows, keys):
 if __name__ == "__main__":
     start = timer()
     parser = argparse.ArgumentParser(
-        description="Extract Enable Periods from wpilog CSV exports. Multiple overlapping windows are treated as one."
+        description="Extract events (Default: Robot Enable Periods) from wpilog CSV exports. Multiple overlapping windows are treated as one."
     )
     parser.add_argument("-i", "--input", help="input CSV file representing a WPILog")
     parser.add_argument(
         "-o", "--output", help="output filename to write filtered results to"
     )
     parser.add_argument(
-        "-B", "--before", help="seconds before enable period to include", default=10
+        "-B", "--before", help="seconds before `begin-condition` to include", default=10
     )
     parser.add_argument(
-        "-A", "--after", help="seconds after enable period to include", default=10
-    )
-    parser.add_argument(
-        "-m",
-        "--multiple",
-        action="store_true",
-        help="output one file per range instead of one total. NOT IMPLEMENTED",
+        "-A", "--after", help="seconds after `end-condition` to include", default=10
     )
     parser.add_argument(
         "-b",
         "--begin-condition",
         default="row['DS:enabled'] == '1'",
-        help="when this is true, begin window",
+        help="when this is true, begin window. Default: Enable Period",
     )
     parser.add_argument(
         "-e",
         "--end-condition",
         default="row['DS:enabled'] == '0'",
-        help="when this is true, end window",
+        help="when this is true, end window. Default: Enable Period",
     )
 
     args = parser.parse_args()
     args.before = int(args.before)
     args.after = int(args.after)
 
-    if args.output[-4:] == ".csv":
+    if len(args.output) >= 4 and args.output[-4:] == ".csv":
         args.output = args.output[:-4]
 
     keys = []
 
-    (rows, keys, ranges) = read_csv(args)
+    read_csv(args)
     print(f"completed in {timer() - start} seconds")
