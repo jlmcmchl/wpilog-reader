@@ -88,6 +88,21 @@ def read_csv(args):
                 active_window = False
                 was_active_window = True
                 max_time = time + args.after
+            elif not was_active_window and not active_window and len(candidate_rows) > 0:
+                # trim candidate rows
+                min_time = max(0, time - args.before)
+
+                candidate_min_time = float(candidate_rows[0]["timestamp"])
+                candidate_max_time = float(candidate_rows[-1]["timestamp"])
+
+                if candidate_max_time - candidate_min_time > args.before * 2:
+                    (candidate_min_index, _) = binarySearch(
+                        candidate_rows,
+                        min_time,
+                        lambda row: float(row["timestamp"]),
+                    )
+                    print(f'trimming to {min_time} @ row {candidate_min_index}')
+                    candidate_rows = candidate_rows[candidate_min_index:]
 
             if active_window or time < max_time:
                 rows.append(row)
