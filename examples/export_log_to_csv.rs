@@ -87,27 +87,27 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
 
                 match metadata.typ {
                     "boolean" => {
-                        let (_, val) = parse_boolean(data.data).unwrap();
+                        let (_, val) = parse_boolean(data).unwrap();
                         row[start] = Some(format!("{:X?}", val as u8));
                     }
                     "int64" => {
-                        let (_, val) = parse_int64(data.data).unwrap();
+                        let (_, val) = parse_int64(data).unwrap();
                         row[start] = Some(format!("{}", val));
                     }
                     "float" => {
-                        let (_, val) = parse_float(data.data).unwrap();
+                        let (_, val) = parse_float(data).unwrap();
                         row[start] = Some(format!("{}", val));
                     }
                     "double" => {
-                        let (_, val) = parse_double(data.data).unwrap();
+                        let (_, val) = parse_double(data).unwrap();
                         row[start] = Some(format!("{}", val));
                     }
                     "string" => {
-                        let (_, val) = parse_string_full(data.data).unwrap();
+                        let (_, val) = parse_string_full(data).unwrap();
                         row[start] = Some(val.to_string());
                     }
                     "boolean[]" => {
-                        let (_, val) = parse_array(parse_boolean, data.data).unwrap();
+                        let (_, val) = parse_array(parse_boolean, data).unwrap();
 
                         if metadata.should_expand() {
                             row[start] = Some(format!("{}", val.len()));
@@ -119,7 +119,7 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                         }
                     }
                     "int64[]" => {
-                        let (_, val) = parse_array(parse_int64, data.data).unwrap();
+                        let (_, val) = parse_array(parse_int64, data).unwrap();
 
                         if metadata.should_expand() {
                             row[start] = Some(format!("{}", val.len()));
@@ -131,7 +131,7 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                         }
                     }
                     "float[]" => {
-                        let (_, val) = parse_array(parse_float, data.data).unwrap();
+                        let (_, val) = parse_array(parse_float, data).unwrap();
 
                         if metadata.should_expand() {
                             row[start] = Some(format!("{}", val.len()));
@@ -143,7 +143,7 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                         }
                     }
                     "double[]" => {
-                        let (_, val) = parse_array(parse_double, data.data).unwrap();
+                        let (_, val) = parse_array(parse_double, data).unwrap();
 
                         if metadata.should_expand() {
                             row[start] = Some(format!("{}", val.len()));
@@ -156,12 +156,12 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                     }
                     "string[]" => {
                         let (_, val) =
-                            parse_array_ref_with_len(parse_string_with_len, data.data).unwrap();
+                            parse_array_ref_with_len(parse_string_with_len, data).unwrap();
                         row[start] = Some(serde_json::to_string(&val).unwrap());
                     } // Do we care to properly handle this?
                     _ => {
                         // raw, treat like an unsafe string
-                        row[start] = Some(format!("{:X?}", data.data));
+                        row[start] = Some(format!("{:X?}", data));
                     }
                 }
 
@@ -194,18 +194,29 @@ fn main() {
 
     parsed_log.sort();
 
-
-    let types_fname = format!("{}/{}-types.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
+    let types_fname = format!(
+        "{}/{}-types.csv",
+        in_path.parent().unwrap().to_str().unwrap(),
+        in_path.file_stem().unwrap().to_str().unwrap()
+    );
     let types_file = Path::new(&types_fname);
 
     export_types(types_file, &metadata);
 
-    let metadata_fname = format!("{}/{}-metadata.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
+    let metadata_fname = format!(
+        "{}/{}-metadata.csv",
+        in_path.parent().unwrap().to_str().unwrap(),
+        in_path.file_stem().unwrap().to_str().unwrap()
+    );
     let metadata_file = Path::new(&metadata_fname);
 
     export_metadata(metadata_file, &metadata);
 
-    let data_fname = format!("{}/{}-data.csv", in_path.parent().unwrap().to_str().unwrap(), in_path.file_stem().unwrap().to_str().unwrap());
+    let data_fname = format!(
+        "{}/{}-data.csv",
+        in_path.parent().unwrap().to_str().unwrap(),
+        in_path.file_stem().unwrap().to_str().unwrap()
+    );
     let data_file = Path::new(&data_fname);
 
     export_data(data_file, &parsed_log, &metadata);
