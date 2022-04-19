@@ -73,7 +73,7 @@ fn parse_wpilog_record(input: &[u8]) -> IResult<&[u8], WpiRecord> {
         Record::Control(record)
     } else {
         // data record
-        Record::Data(DataRecord { data })
+        Record::Data(data)
     };
 
     Ok((

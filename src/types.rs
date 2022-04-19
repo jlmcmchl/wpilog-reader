@@ -26,6 +26,8 @@ impl<'a> WpiLog<'a> {
                         entry_count: 0,
                         all_same_length: None,
                         finished: false,
+                        start_time: 0,
+                        end_time: 0,
                     });
                 }
                 Record::Control(ControlRecord::SetMetadata(set_metadata)) => {
@@ -43,23 +45,26 @@ impl<'a> WpiLog<'a> {
                         if record.entry_count == 0 {
                             record.all_same_length = match record.typ {
                                 "boolean" | "int64" | "float" | "double" | "string" => None,
-                                "boolean[]" => Some((data.data.len(), 1)),
-                                "int64[]" => Some((data.data.len() / 8, 8)),
-                                "float[]" => Some((data.data.len() / 4, 4)),
-                                "double[]" => Some((data.data.len() / 8, 8)),
+                                "boolean[]" => Some((data.len(), 1)),
+                                "int64[]" => Some((data.len() / 8, 8)),
+                                "float[]" => Some((data.len() / 4, 4)),
+                                "double[]" => Some((data.len() / 8, 8)),
                                 "string[]" => None, // Do we care to handle this?
                                 _ => None,
-                            }
+                            };
+                            record.start_time = entry.timestamp_us;
                         } else {
                             record.all_same_length =
                                 record.all_same_length.and_then(|(len, div)| {
-                                    if len == data.data.len() / div {
+                                    if len == data.len() / div {
                                         Some((len, div))
                                     } else {
                                         None
                                     }
                                 });
                         }
+
+                        record.end_time = entry.timestamp_us;
 
                         record.entry_count += 1;
 
@@ -73,8 +78,33 @@ impl<'a> WpiLog<'a> {
     }
 
     pub fn sort(&mut self) {
-        let records = &mut self.records;
-        records.sort_unstable_by_key(|record| record.timestamp_us);
+        self.records
+            .sort_unstable_by_key(|record| record.timestamp_us);
+
+        let start_records = self
+            .records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Start(_))));
+        let set_metadata_records = self
+            .records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::SetMetadata(_))));
+        let finish_records = self
+            .records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Control(ControlRecord::Finish(_))));
+        let data_records = self
+            .records
+            .iter()
+            .filter(|record| matches!(record.data, Record::Data(_)));
+
+        let records = start_records
+            .chain(set_metadata_records)
+            .chain(finish_records)
+            .chain(data_records)
+            .cloned()
+            .collect::<Vec<_>>();
+        self.records = records;
     }
 }
 
@@ -87,13 +117,8 @@ pub struct WpiRecord<'a> {
 
 #[derive(Debug, Clone)]
 pub enum Record<'a> {
-    Data(DataRecord<'a>),
+    Data(&'a [u8]),
     Control(ControlRecord<'a>),
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct DataRecord<'a> {
-    pub data: &'a [u8],
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +156,8 @@ pub struct MetadataEntry<'a> {
     pub entry_count: usize,
     pub(crate) all_same_length: Option<(usize, usize)>,
     pub finished: bool,
+    pub start_time: u64,
+    pub end_time: u64,
 }
 
 impl<'a> MetadataEntry<'a> {
