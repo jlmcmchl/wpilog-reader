@@ -202,15 +202,33 @@ fn export_data(
         None => {}
     }
 
+    let mut row = template_record.clone();
+    let mut current_timestamp = 0;
+
     for record in log
         .iter()
-        .filter(|record| start <= record.timestamp_us && record.timestamp_us <= end)
+        .filter(|record| start <= record.timestamp_us && record.timestamp_us <= end && matches!(record.data, Record::Data(_)))
     {
-        let mut row = template_record.clone();
-        row[0] = Some(format!("{}", record.timestamp_us as f64 / 1_000_000.0));
+        let first_entry = row.get_mut(0).unwrap();
+        if first_entry.is_none() {
+            row[0] = Some(format!("{}", record.timestamp_us as f64 / 1_000_000.0));
+            current_timestamp = record.timestamp_us;
+        } else if record.timestamp_us != current_timestamp {
+            // write row, setup for new row
+            for field in row {
+                match field {
+                    Some(val) => csvwriter.write_field(val).unwrap(),
+                    None => csvwriter.write_field(&[]).unwrap(),
+                }
+            }
+
+            csvwriter.write_record(None::<&[u8]>).unwrap();
+
+            row = template_record.clone();
+            current_timestamp = record.timestamp_us;
+        }
 
         match &record.data {
-            Record::Control(_) => {}
             Record::Data(data) => {
                 let (ind, metadata) = metadata
                     .iter()
@@ -224,16 +242,8 @@ fn export_data(
                 let start = start_indices[ind];
 
                 insert_data_into_row(data, metadata, &mut row, start);
-
-                for field in row {
-                    match field {
-                        Some(val) => csvwriter.write_field(val).unwrap(),
-                        None => csvwriter.write_field(&[]).unwrap(),
-                    }
-                }
-
-                csvwriter.write_record(None::<&[u8]>).unwrap();
-            }
+            },
+            _ => {}
         }
     }
 
