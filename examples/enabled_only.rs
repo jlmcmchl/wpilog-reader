@@ -330,10 +330,9 @@ fn state_before_timestamp<'a, 'b>(
     state
 }
 
-fn main() {
+fn process_log_file(in_path: &Path) {
     let start = std::time::Instant::now();
-    let args: Vec<String> = env::args().collect();
-    let in_path = Path::new(&args[1]);
+
     let mut infile = File::open(in_path).unwrap();
 
     let mut content = Vec::new();
@@ -346,7 +345,6 @@ fn main() {
     parsed_log.sort();
 
     let enabled_periods = get_enabled_periods(&parsed_log, &metadata);
-    // println!("{:?}", enabled_periods);
 
     let types_fname = format!(
         "{}/{}-types.csv",
@@ -378,6 +376,8 @@ fn main() {
                 );
                 let data_file = Path::new(&data_fname);
 
+                println!("Exporting to {}, duration: {:.2}s", data_fname, (period.1 as f64 - period.0 as f64) / 1000000.0);
+
                 export_data(
                     data_file,
                     &parsed_log.records,
@@ -392,4 +392,18 @@ fn main() {
 
     let end = std::time::Instant::now();
     println!("took: {:?}", end - start);
+}
+
+fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    for entry in glob::glob(&args[1]).expect(&format!("{} is not globbable", args[1])) {
+        match entry {
+            Ok(path) => {
+                println!("processing {}", path.to_str().unwrap());
+                process_log_file(path.as_path())
+            },
+            Err(_) => {}
+        }
+    }
 }
