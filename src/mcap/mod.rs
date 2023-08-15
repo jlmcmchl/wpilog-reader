@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use nom::{
     multi::length_data,
     number::complete::{le_u16, le_u32, le_u64, le_u8},
-    IResult, Parser,
+    IResult, Parser, error::{ErrorKind, VerboseErrorKind},
 };
 
 use crate::mcap::parse_utils::parse_map;
@@ -372,6 +372,16 @@ pub struct Chunk<'a> {
     uncompressed_crc: u32,
     compression: &'a str,
     records: &'a [u8],
+}
+
+impl <'a> Chunk<'a> {
+    pub fn parse_inner(&self) -> IResult<&'a [u8], Vec<RawRecord<'a>>> {
+        match self.compression {
+            "" => nom::multi::many0(RawRecord::parse)(self.records),
+            _ => Err(nom::Err::Failure(nom::error::Error::new(self.compression.as_bytes(), ErrorKind::NoneOf)))
+        }
+        
+    }
 }
 
 impl<'a> Parse<'a, Chunk<'a>> for Chunk<'a> {

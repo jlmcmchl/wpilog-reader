@@ -15,7 +15,24 @@ fn main() {
         Ok((_, log)) => {
             println!("Parse successful - entries: {}", log.records.len());
             for record in log.records {
-                println!("{:?}", Record::try_from(record));
+                let parsed = Record::try_from(record);
+
+                if let Ok(Record::Chunk(chunk)) = parsed {
+                    println!("Entering Chunk");
+                    match chunk.parse_inner() {
+                        Ok((_, records)) => {
+                            for record in records {
+                                let parsed = Record::try_from(record);
+        
+                                println!("{:?}", parsed);
+                            }
+                        },
+                        _ => {}
+                    }
+                    println!("Exiting Chunk");
+                } else {
+                    println!("{:?}", parsed);
+                }
             }
         }
         Err(e) => println!("{}", e),
