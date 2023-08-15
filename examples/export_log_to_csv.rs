@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::Read, path::Path};
 
-use wpilog_reader::{
+use wpilog_reader::wpilog::{
     parser::{
         parse_array, parse_array_ref_with_len, parse_boolean, parse_double, parse_float,
         parse_int64, parse_string_full, parse_string_with_len, parse_wpilog,
@@ -168,7 +168,7 @@ fn export_data(data_file: &Path, log: &WpiLog, metadata: &[MetadataEntry]) {
                 for field in row {
                     match field {
                         Some(val) => csvwriter.write_field(val).unwrap(),
-                        None => csvwriter.write_field(&[]).unwrap(),
+                        None => csvwriter.write_field([]).unwrap(),
                     }
                 }
 

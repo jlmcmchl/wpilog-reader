@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::Read, path::Path};
 
-use wpilog_reader::{
+use wpilog_reader::wpilog::{
     parser::{
         parse_array, parse_array_ref_with_len, parse_boolean, parse_double, parse_float,
         parse_int64, parse_string_full, parse_string_with_len, parse_wpilog,
@@ -192,7 +192,7 @@ fn export_data(
             for field in row {
                 match field {
                     Some(val) => csvwriter.write_field(val).unwrap(),
-                    None => csvwriter.write_field(&[]).unwrap(),
+                    None => csvwriter.write_field([]).unwrap(),
                 }
             }
 
@@ -205,10 +205,11 @@ fn export_data(
     let mut row = template_record.clone();
     let mut current_timestamp = 0;
 
-    for record in log
-        .iter()
-        .filter(|record| start <= record.timestamp_us && record.timestamp_us <= end && matches!(record.data, Record::Data(_)))
-    {
+    for record in log.iter().filter(|record| {
+        start <= record.timestamp_us
+            && record.timestamp_us <= end
+            && matches!(record.data, Record::Data(_))
+    }) {
         let first_entry = row.get_mut(0).unwrap();
         if first_entry.is_none() {
             row[0] = Some(format!("{}", record.timestamp_us as f64 / 1_000_000.0));
@@ -218,7 +219,7 @@ fn export_data(
             for field in row {
                 match field {
                     Some(val) => csvwriter.write_field(val).unwrap(),
-                    None => csvwriter.write_field(&[]).unwrap(),
+                    None => csvwriter.write_field([]).unwrap(),
                 }
             }
 
@@ -242,7 +243,7 @@ fn export_data(
                 let start = start_indices[ind];
 
                 insert_data_into_row(data, metadata, &mut row, start);
-            },
+            }
             _ => {}
         }
     }
@@ -376,7 +377,11 @@ fn process_log_file(in_path: &Path) {
                 );
                 let data_file = Path::new(&data_fname);
 
-                println!("Exporting to {}, duration: {:.2}s", data_fname, (period.1 as f64 - period.0 as f64) / 1000000.0);
+                println!(
+                    "Exporting to {}, duration: {:.2}s",
+                    data_fname,
+                    (period.1 as f64 - period.0 as f64) / 1000000.0
+                );
 
                 export_data(
                     data_file,
@@ -397,12 +402,12 @@ fn process_log_file(in_path: &Path) {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    for entry in glob::glob(&args[1]).expect(&format!("{} is not globbable", args[1])) {
+    for entry in glob::glob(&args[1]).unwrap_or_else(|_| panic!("{} is not globbable", args[1])) {
         match entry {
             Ok(path) => {
                 println!("processing {}", path.to_str().unwrap());
                 process_log_file(path.as_path())
-            },
+            }
             Err(_) => {}
         }
     }

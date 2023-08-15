@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::Read};
 
-use wpilog_reader::{
+use wpilog_reader::wpilog::{
     parser::parse_wpilog,
     types::{ControlRecord, Record},
 };

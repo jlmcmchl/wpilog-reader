@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::Read};
 
-use wpilog_reader::parser::parse_wpilog;
+use wpilog_reader::wpilog::parser::parse_wpilog;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

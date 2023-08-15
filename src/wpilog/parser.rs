@@ -1,6 +1,6 @@
 use nom::IResult;
 
-use crate::types::*;
+use super::types::*;
 
 pub fn parse_wpilog(input: &[u8]) -> IResult<&[u8], WpiLog> {
     let (input, _) = nom::bytes::complete::tag("WPILOG")(input)?;
