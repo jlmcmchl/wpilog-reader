@@ -13,7 +13,7 @@ fn main() {
 
     match parsed_log {
         Ok((_, log)) => {
-            println!("Parse successful - entries:{}", log.records.len());
+            println!("Parse successful - entries: {}", log.records.len());
             for record in log.records {
                 println!("{:?}", Record::try_from(record));
             }

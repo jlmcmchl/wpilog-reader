@@ -103,15 +103,15 @@ pub enum Record<'a> {
     Footer(Footer),
     Schema(Schema<'a>),
     Channel(Channel<'a>),
-    Message(Message),
+    Message(Message<'a>),
     Chunk(Chunk<'a>),
     MessageIndex(MessageIndex),
     ChunkIndex(ChunkIndex<'a>),
-    Attachment(Attachment),
-    Metadata(Metadata),
+    Attachment(Attachment<'a>),
+    Metadata(Metadata<'a>),
     DataEnd(DataEnd),
-    AttachmentIndex(AttachmentIndex),
-    MetadataIndex(MetadataIndex),
+    AttachmentIndex(AttachmentIndex<'a>),
+    MetadataIndex(MetadataIndex<'a>),
     Statistics(Statistics),
     SummaryOffset(SummaryOffset),
 }
@@ -577,11 +577,170 @@ impl<'a> From<SummaryOffset> for Record<'a> {
     }
 }
 
-create_empty_record!(Message);
-create_empty_record!(Attachment);
-create_empty_record!(Metadata);
-create_empty_record!(AttachmentIndex);
-create_empty_record!(MetadataIndex);
+#[derive(Debug, Clone)]
+pub struct Attachment<'a> {
+    log_time: u64,
+    create_time: u64,
+    name: &'a str,
+    media_type: &'a str,
+    data: &'a [u8],
+    crc: u32,
+}
+
+impl<'a> Parse<'a, Attachment<'a>> for Attachment<'a> {
+    fn parse(input: &'a [u8]) -> IResult<&'a [u8], Attachment<'a>> {
+        let (input, log_time) = le_u64(input)?;
+        let (input, create_time) = le_u64(input)?;
+        let (input, name) = parse_str(input)?;
+        let (input, media_type) = parse_str(input)?;
+        let (input, data) = length_data(le_u64)(input)?;
+        let (input, crc) = le_u32(input)?;
+
+        Ok((
+            input,
+            Attachment {
+                log_time,
+                create_time,
+                name,
+                media_type,
+                data,
+                crc,
+            },
+        ))
+    }
+}
+
+impl<'a> From<Attachment<'a>> for Record<'a> {
+    fn from(value: Attachment<'a>) -> Self {
+        Record::Attachment(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AttachmentIndex<'a> {
+    offset: u64,
+    length: u64,
+    log_time: u64,
+    create_time: u64,
+    data_size: u64,
+    name: &'a str,
+    media_type: &'a str,
+}
+
+impl<'a> Parse<'a, AttachmentIndex<'a>> for AttachmentIndex<'a> {
+    fn parse(input: &'a [u8]) -> IResult<&'a [u8], AttachmentIndex<'a>> {
+        let (input, offset) = le_u64(input)?;
+        let (input, length) = le_u64(input)?;
+        let (input, log_time) = le_u64(input)?;
+        let (input, create_time) = le_u64(input)?;
+        let (input, data_size) = le_u64(input)?;
+        let (input, name) = parse_str(input)?;
+        let (input, media_type) = parse_str(input)?;
+
+        Ok((
+            input,
+            AttachmentIndex {
+                offset,
+                length,
+                log_time,
+                create_time,
+                data_size,
+                name,
+                media_type,
+            },
+        ))
+    }
+}
+
+impl<'a> From<AttachmentIndex<'a>> for Record<'a> {
+    fn from(value: AttachmentIndex<'a>) -> Self {
+        Record::AttachmentIndex(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Message<'a> {
+    channel_id: u16,
+    sequence: u32,
+    log_time: u64,
+    publish_time: u64,
+    data: &'a [u8],
+}
+
+impl<'a> Parse<'a, Message<'a>> for Message<'a> {
+    fn parse(input: &'a [u8]) -> IResult<&'a [u8], Message<'a>> {
+        let (input, channel_id) = le_u16(input)?;
+        let (input, sequence) = le_u32(input)?;
+        let (input, log_time) = le_u64(input)?;
+        let (input, publish_time) = le_u64(input)?;
+        let data = input;
+        Ok((
+            input,
+            Message {
+                channel_id,
+                sequence,
+                log_time,
+                publish_time,
+                data,
+            },
+        ))
+    }
+}
+
+impl<'a> From<Message<'a>> for Record<'a> {
+    fn from(value: Message<'a>) -> Self {
+        Record::Message(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Metadata<'a> {
+    name: &'a str,
+    metadata: HashMap<&'a str, &'a str>,
+}
+
+impl<'a> Parse<'a, Metadata<'a>> for Metadata<'a> {
+    fn parse(input: &'a [u8]) -> IResult<&'a [u8], Metadata<'a>> {
+        let (input, name) = parse_str(input)?;
+        let (input, metadata) = parse_map(Box::new(parse_str), Box::new(parse_str)).parse(input)?;
+        Ok((input, Metadata { name, metadata }))
+    }
+}
+
+impl<'a> From<Metadata<'a>> for Record<'a> {
+    fn from(value: Metadata<'a>) -> Self {
+        Record::Metadata(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MetadataIndex<'a> {
+    offset: u64,
+    length: u64,
+    name: &'a str,
+}
+
+impl<'a> Parse<'a, MetadataIndex<'a>> for MetadataIndex<'a> {
+    fn parse(input: &'a [u8]) -> IResult<&'a [u8], MetadataIndex<'a>> {
+        let (input, offset) = le_u64(input)?;
+        let (input, length) = le_u64(input)?;
+        let (input, name) = parse_str(input)?;
+        Ok((
+            input,
+            MetadataIndex {
+                offset,
+                length,
+                name,
+            },
+        ))
+    }
+}
+
+impl<'a> From<MetadataIndex<'a>> for Record<'a> {
+    fn from(value: MetadataIndex<'a>) -> Self {
+        Record::MetadataIndex(value)
+    }
+}
 
 mod parse_utils {
     use std::{collections::HashMap, hash::Hash};
